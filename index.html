@@ -92,35 +92,32 @@ const videoElement = document.getElementById('video');
 let scannerStarted = false;
 
 async function startScanner() {
-  if (scannerStarted) return alert("Scanner already running");
-  scannerStarted = true;
+  const videoElement = document.getElementById('video');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    videoElement.srcObject = stream;
 
-  const vision = await window.Vision.createFromOptions({
-    modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/qr_code_v1.tflite",
-    delegate: "CPU"
-  });
+    const vision = await window.Vision.createFromOptions({
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/qr_code_v1.tflite",
+      delegate: "CPU"
+    });
 
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  videoElement.srcObject = stream;
-
-  videoElement.addEventListener('loadeddata', async () => {
-    const detectFrame = async () => {
-      const results = await vision.detectForVideo(videoElement, Date.now());
-      if (results.length > 0) {
-        const qrText = results[0].text;
-        if (scannedData.includes(qrText)) {
-          scannedData = scannedData.filter(x => x !== qrText); // delete
-        } else {
-          scannedData.push(qrText); // add
+    videoElement.addEventListener('loadeddata', async () => {
+      const detectFrame = async () => {
+        const results = await vision.detectForVideo(videoElement, Date.now());
+        if (results.length > 0) {
+          console.log(results[0].text);
         }
-        updateTable();
-      }
-      requestAnimationFrame(detectFrame);
-    };
-    detectFrame();
-  });
+        requestAnimationFrame(detectFrame);
+      };
+      detectFrame();
+    });
+  } catch (err) {
+    alert("Cannot access camera: " + err.message);
+  }
 }
 </script>
 
 </body>
 </html>
+
