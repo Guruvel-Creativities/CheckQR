@@ -2,132 +2,71 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR PDF Generator & Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QR Scanner Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"></script>
-    
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; max-width: 800px; margin: 0 auto; }
-        .controls { margin-bottom: 20px; display: flex; gap: 10px; }
-        button { padding: 10px 15px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
-        button:hover { background: #0056b3; }
-        video { width: 100%; max-width: 400px; border-radius: 8px; background: #eee; transform: scaleX(1); }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
-        th { background-color: #f4f4f4; }
-        .status { color: #666; font-style: italic; }
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 15px; background: #f0f2f5; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        video { width: 100%; max-width: 500px; border-radius: 12px; background: #000; display: block; margin: 10px 0; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 8px; background: #007bff; color: white; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #007bff; color: white; }
+        .status-bar { padding: 8px; font-size: 0.9em; border-radius: 5px; margin-bottom: 10px; }
+        .error { background: #ffe3e3; color: #d32f2f; }
+        .success { background: #e3ffe3; color: #2e7d32; }
     </style>
 </head>
 <body>
 
-    <h2>QR PDF Generator & Scanner</h2>
-
-    <div class="controls">
-        <button onclick="generatePDF()">1. Generate QR PDF</button>
-        <button onclick="startScanner()">2. Start Back Camera Scan</button>
+    <div class="card">
+        <h2>QR Manager</h2>
+        <div class="btn-group">
+            <button onclick="generatePDF()">Create PDF</button>
+            <button onclick="startScanner()" style="background: #28a745;">Start Back Cam</button>
+        </div>
+        <div id="status" class="status-bar">Ready to scan...</div>
+        <video id="video" playsinline></video>
     </div>
 
-    <p id="loadingStatus" class="status">Scanner ready...</p>
-    <video id="video" autoplay playsinline></video>
-
-    <h3>Scanned QR Data</h3>
-    <table id="scanTable">
-        <thead>
-            <tr>
-                <th>Timestamp</th>
-                <th>QR Content</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
+    <div class="card">
+        <h3>Scanned History</h3>
+        <table id="scanTable">
+            <thead><tr><th>Time</th><th>Data</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
 
 <script>
-// --- Data Management ---
 let scannedData = JSON.parse(localStorage.getItem('scannedQRs') || '[]');
+const videoElement = document.getElementById('video');
+const statusDiv = document.getElementById('status');
+let barcodeDetector;
 
 function updateTable() {
     const tbody = document.querySelector('#scanTable tbody');
-    tbody.innerHTML = '';
-    // Show newest first
-    [...scannedData].reverse().forEach(entry => {
-        const row = document.createElement('tr');
-        row.innerHTML = `<td>${entry.time}</td><td><code>${entry.data}</code></td>`;
-        tbody.appendChild(row);
-    });
+    tbody.innerHTML = scannedData.slice().reverse().map(entry => 
+        `<tr><td>${entry.time}</td><td><code>${entry.data}</code></td></tr>`
+    ).join('');
     localStorage.setItem('scannedQRs', JSON.stringify(scannedData));
 }
 
-// Initial load
-updateTable();
-
-// --- PDF Generation ---
-async function generatePDF() {
-    let qty = parseInt(prompt("How many QR codes to generate?", "10"));
-    if (isNaN(qty) || qty <= 0) return;
-
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: 'mm', format: [100, 150] }); // Portrait Label
-
-    const qrSize = 25; 
-    const margin = 5;
-    const pageWidth = 100;
-    const pageHeight = 150;
-
-    let x = margin;
-    let y = margin;
-
-    for (let i = 1; i <= qty; i++) {
-        let qrData = `ID-${String(i).padStart(4,'0')}`;
-        
-        // Create off-screen canvas for QR
-        const canvas = document.createElement('canvas');
-        await QRCode.toCanvas(canvas, qrData, { width: 200, margin: 2 });
-        const imgData = canvas.toDataURL("image/png");
-
-        pdf.addImage(imgData, 'PNG', x, y, qrSize, qrSize);
-        pdf.setFontSize(8);
-        pdf.text(qrData, x + (qrSize/2), y + qrSize + 3, { align: 'center' });
-
-        x += qrSize + margin;
-        
-        // Wrap to next row
-        if (x + qrSize > pageWidth) {
-            x = margin;
-            y += qrSize + margin + 5;
-        }
-
-        // New page if out of space
-        if (y + qrSize + margin > pageHeight && i < qty) {
-            pdf.addPage();
-            x = margin;
-            y = margin;
-        }
-    }
-
-    pdf.save('bulk_qr_codes.pdf');
-}
-
-// --- MediaPipe QR Scanner ---
-let barcodeDetector;
-const videoElement = document.getElementById('video');
-const statusText = document.getElementById('loadingStatus');
-
 async function startScanner() {
     try {
-        statusText.innerText = "Initializing Camera & AI...";
-        
-        // 1. Setup MediaPipe Vision
-        const vision = await imgly.tasksVision; // Note: In CDN version, usually accessed via window.FilesetResolver
-        const { ImageClassifier, BarcodeDetector, FilesetResolver } = window.createMediaPipeSolutions; 
-        
-        // Proper MediaPipe 0.10+ Initialization
-        const visionTasks = await window.createMediaPipeSolutions.FilesetResolver.forVisionTasks(
+        statusDiv.className = "status-bar";
+        statusDiv.innerText = "Requesting camera...";
+
+        // 1. Load MediaPipe
+        const vision = await imgly?.tasksVision || window["tasks-vision"];
+        const filesetResolver = await vision.FilesetResolver.forVisionTasks(
             "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
         );
-
-        barcodeDetector = await window.createMediaPipeSolutions.BarcodeDetector.createFromOptions(visionTasks, {
+        
+        barcodeDetector = await vision.BarcodeDetector.createFromOptions(filesetResolver, {
             baseOptions: {
                 modelAssetPath: `https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite`,
                 delegate: "GPU"
@@ -135,63 +74,71 @@ async function startScanner() {
             runningMode: "VIDEO"
         });
 
-        // 2. Request BACK CAMERA
-        const stream = await navigator.mediaDevices.getUserMedia({ 
+        // 2. Start Video with constraints
+        const constraints = {
             video: { 
                 facingMode: "environment",
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
-            } 
-        });
-        
-        videoElement.srcObject = stream;
-        statusText.innerText = "Scanner Active - Point at a QR Code";
+            }
+        };
 
-        // 3. Detection Loop
-        videoElement.addEventListener('loadeddata', predictWebcam);
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+            videoElement.play();
+            statusDiv.className = "status-bar success";
+            statusDiv.innerText = "Scanner Active";
+            predictWebcam();
+        };
 
     } catch (err) {
+        statusDiv.className = "status-bar error";
+        statusDiv.innerText = "Error: " + err.message;
         console.error(err);
-        statusText.innerText = "Error: " + err.message;
-        alert("Camera Error: Ensure you are on HTTPS and granted permissions.");
     }
 }
 
-let lastVideoTime = -1;
 async function predictWebcam() {
-    let startTimeMs = performance.now();
-    
+    if (videoElement.paused || videoElement.ended) return;
+
     if (videoElement.currentTime !== lastVideoTime) {
         lastVideoTime = videoElement.currentTime;
-        const detections = await barcodeDetector.detectForVideo(videoElement, startTimeMs);
+        const result = await barcodeDetector.detectForVideo(videoElement, performance.now());
         
-        if (detections.length > 0) {
-            const foundData = detections[0].rawValue;
-            
-            // Check if this is a new scan (not in the last 2 seconds)
-            const alreadyExists = scannedData.some(item => item.data === foundData);
-            
-            if (!alreadyExists) {
-                const newEntry = {
-                    data: foundData,
-                    time: new Date().toLocaleTimeString()
-                };
-                scannedData.push(newEntry);
+        if (result.length > 0) {
+            const code = result[0].rawValue;
+            if (!scannedData.some(d => d.data === code)) {
+                scannedData.push({ data: code, time: new Date().toLocaleTimeString() });
                 updateTable();
-                
-                // Visual feedback
-                videoElement.style.outline = "5px solid #28a745";
-                setTimeout(() => videoElement.style.outline = "none", 500);
+                // Visual Ping
+                videoElement.style.filter = "brightness(1.5)";
+                setTimeout(() => videoElement.style.filter = "none", 150);
             }
         }
     }
     requestAnimationFrame(predictWebcam);
 }
-</script>
+let lastVideoTime = -1;
 
-<script>
-    window.createMediaPipeSolutions = window["tasks-vision"];
-</script>
+async function generatePDF() {
+    const qty = prompt("Quantity:", "5");
+    if (!qty) return;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: [100, 100] });
+    
+    for (let i = 1; i <= qty; i++) {
+        const data = `QR-${i}-${Math.random().toString(36).substr(2, 5)}`;
+        const canvas = document.createElement('canvas');
+        await QRCode.toCanvas(canvas, data);
+        pdf.addImage(canvas.toDataURL(), 'PNG', 10, 10, 40, 40);
+        pdf.text(data, 10, 55);
+        if (i < qty) pdf.addPage();
+    }
+    pdf.save('qrs.pdf');
+}
 
+updateTable();
+</script>
 </body>
 </html>
