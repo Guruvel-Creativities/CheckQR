@@ -4,136 +4,857 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>QR Scanner Pro</title>
+    <!-- QR Code Generator -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <!-- PDF Generator -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- QR Scanner Library (no MediaPipe) -->
+    <script src="https://unpkg.com/jsQR@1.4.0/dist/jsQR.js"></script>
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 15px; background: #f0f2f5; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-width: 500px; margin: auto; }
-        .btn-row { display: flex; gap: 10px; margin-bottom: 20px; }
-        button { flex: 1; padding: 15px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; color: white; }
-        #genBtn { background: #6c757d; }
-        #scanBtn { background: #28a745; }
-        #video-container { width: 100%; aspect-ratio: 1; background: #000; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .status { padding: 12px; border-radius: 8px; background: #eee; text-align: center; margin-bottom: 15px; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .card { 
+            background: white; 
+            padding: 25px; 
+            border-radius: 20px; 
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3); 
+            width: 100%;
+            max-width: 550px; 
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .title {
+            text-align: center;
+            margin: 0 0 25px 0;
+            color: #333;
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .btn-row { 
+            display: flex; 
+            gap: 15px; 
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        
+        button { 
+            flex: 1; 
+            padding: 18px 20px; 
+            border: none; 
+            border-radius: 12px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            color: white; 
+            font-size: 16px;
+            transition: all 0.3s ease;
+            min-width: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button i {
+            font-size: 20px;
+        }
+        
+        #genBtn { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        #scanBtn { 
+            background: linear-gradient(135deg, #00b09b 0%, #96c93d 100%);
+        }
+        
+        #stopBtn { 
+            background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+            display: none; 
+        }
+        
+        #video-container { 
+            width: 100%; 
+            aspect-ratio: 1; 
+            background: #000; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            margin-bottom: 25px; 
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            display: none;
+        }
+        
+        video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+        }
+        
+        .scanner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .scanner-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70%;
+            height: 70%;
+            border: 3px solid #00ff00;
+            border-radius: 10px;
+            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.7);
+        }
+        
+        .scan-line {
+            position: absolute;
+            top: 15%;
+            left: 15%;
+            width: 70%;
+            height: 3px;
+            background: #00ff00;
+            animation: scan 2s infinite linear;
+            box-shadow: 0 0 10px #00ff00;
+        }
+        
+        @keyframes scan {
+            0% { top: 15%; }
+            50% { top: 85%; }
+            100% { top: 15%; }
+        }
+        
+        .status { 
+            padding: 15px; 
+            border-radius: 12px; 
+            background: #f8f9fa; 
+            text-align: center; 
+            margin-bottom: 20px; 
+            font-size: 15px;
+            min-height: 20px;
+            border-left: 5px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        
+        .status.success { 
+            background: #d4edda; 
+            color: #155724; 
+            border-left-color: #28a745;
+        }
+        
+        .status.error { 
+            background: #f8d7da; 
+            color: #721c24; 
+            border-left-color: #dc3545;
+        }
+        
+        .status.warning { 
+            background: #fff3cd; 
+            color: #856404; 
+            border-left-color: #ffc107;
+        }
+        
+        .status.info { 
+            background: #d1ecf1; 
+            color: #0c5460; 
+            border-left-color: #17a2b8;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        
+        .control-btn {
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            background: rgba(0,0,0,0.7);
+            transform: scale(1.1);
+        }
+        
+        .history-section {
+            margin-top: 30px;
+        }
+        
+        .history-title {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .history-title i {
+            color: #667eea;
+        }
+        
+        .clear-btn {
+            margin-left: auto;
+            padding: 8px 16px;
+            background: #6c757d;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        table { 
+            width: 100%; 
+            border-collapse: separate; 
+            border-spacing: 0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            margin-top: 10px;
+        }
+        
+        thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        th { 
+            padding: 18px; 
+            text-align: left; 
+            color: white;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        td { 
+            padding: 16px; 
+            border-bottom: 1px solid #eee; 
+            text-align: left; 
+            font-size: 14px;
+        }
+        
+        tbody tr {
+            transition: all 0.3s ease;
+        }
+        
+        tbody tr:hover {
+            background: #f8f9fa;
+            transform: translateX(5px);
+        }
+        
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: #dee2e6;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 15px;
+            }
+            
+            .card {
+                padding: 20px;
+            }
+            
+            button {
+                min-width: 100%;
+                padding: 16px;
+            }
+            
+            .btn-row {
+                flex-direction: column;
+            }
+            
+            th, td {
+                padding: 12px 10px;
+                font-size: 13px;
+            }
+            
+            .title {
+                font-size: 24px;
+            }
+        }
+        
+        .fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .fab:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+        
+        .counter {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ff4757;
+            color: white;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
     </style>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
 
-<div class="card">
-    <div class="btn-row">
-        <button id="genBtn">1. Generate PDF</button>
-        <button id="scanBtn">2. Start Back Cam</button>
-    </div>
-
-    <div id="status" class="status">Initializing...</div>
-    
-    <div id="video-container">
-        <video id="video" playsinline></video>
-    </div>
-
-    <table id="scanTable">
-        <thead><tr><th>Time</th><th>Data</th></tr></thead>
-        <tbody></tbody>
-    </table>
+<!-- Floating Action Button for Quick Scan -->
+<div class="fab" id="fabScan" title="Quick Scan">
+    <i class="fas fa-qrcode"></i>
+    <div class="counter" id="scanCount">0</div>
 </div>
 
-<script type="module">
-    // Using an 'import' within a type="module" script is required for MediaPipe
-    import { BarcodeDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+<div class="card">
+    <h1 class="title">
+        <i class="fas fa-qrcode"></i> QR Scanner Pro
+    </h1>
+    
+    <div class="btn-row">
+        <button id="genBtn">
+            <i class="fas fa-file-pdf"></i> Generate PDF
+        </button>
+        <button id="scanBtn">
+            <i class="fas fa-camera"></i> Start Camera
+        </button>
+        <button id="stopBtn">
+            <i class="fas fa-stop"></i> Stop Camera
+        </button>
+    </div>
 
+    <div id="status" class="status info">
+        <i class="fas fa-info-circle"></i> Click "Start Camera" to begin scanning QR codes
+    </div>
+    
+    <div id="video-container">
+        <video id="video" playsinline autoplay></video>
+        <div class="scanner-overlay">
+            <div class="scanner-frame"></div>
+            <div class="scan-line"></div>
+        </div>
+        <div class="controls">
+            <button class="control-btn" id="switchCam" title="Switch Camera">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="control-btn" id="flashBtn" title="Toggle Flash">
+                <i class="fas fa-bolt"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="history-section">
+        <div class="history-title">
+            <i class="fas fa-history"></i> Scan History
+            <button class="clear-btn" id="clearHistory">
+                <i class="fas fa-trash"></i> Clear
+            </button>
+        </div>
+        
+        <div id="table-container">
+            <table id="scanTable">
+                <thead>
+                    <tr>
+                        <th><i class="far fa-clock"></i> Time</th>
+                        <th><i class="fas fa-qrcode"></i> QR Code Data</th>
+                        <th><i class="fas fa-copy"></i> Action</th>
+                    </tr>
+                </thead>
+                <tbody id="scanTableBody">
+                    <!-- Rows will be inserted here -->
+                </tbody>
+            </table>
+            <div id="emptyState" class="empty-state">
+                <i class="fas fa-qrcode"></i>
+                <h3>No scans yet</h3>
+                <p>Scan your first QR code to see it here</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // DOM Elements
     const video = document.getElementById('video');
     const status = document.getElementById('status');
     const scanBtn = document.getElementById('scanBtn');
+    const stopBtn = document.getElementById('stopBtn');
     const genBtn = document.getElementById('genBtn');
+    const videoContainer = document.getElementById('video-container');
+    const switchCamBtn = document.getElementById('switchCam');
+    const flashBtn = document.getElementById('flashBtn');
+    const clearHistoryBtn = document.getElementById('clearHistory');
+    const scanTableBody = document.getElementById('scanTableBody');
+    const emptyState = document.getElementById('emptyState');
+    const fabScan = document.getElementById('fabScan');
+    const scanCount = document.getElementById('scanCount');
     
-    let detector;
-    let lastTime = -1;
+    // Variables
+    let stream = null;
+    let scanning = false;
+    let animationFrameId = null;
+    let canvas = null;
+    let canvasContext = null;
+    let currentFacingMode = 'environment'; // Start with back camera
+    let lastScanTime = 0;
+    let lastScanData = '';
+    
+    // Load history from localStorage
     let history = JSON.parse(localStorage.getItem('scannedQRs') || '[]');
+    updateScanCount();
 
-    // Setup UI
-    status.innerText = "Library Loaded. Ready to Scan.";
+    // Update status display
+    function updateStatus(message, type = 'info') {
+        const icon = {
+            'info': 'info-circle',
+            'success': 'check-circle',
+            'error': 'exclamation-circle',
+            'warning': 'exclamation-triangle'
+        }[type];
+        
+        status.innerHTML = `<i class="fas fa-${icon}"></i> ${message}`;
+        status.className = `status ${type}`;
+    }
 
-    // --- PDF LOGIC ---
-    genBtn.onclick = async () => {
-        const qty = prompt("How many QRs?", "3");
-        if (!qty) return;
-        const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF();
-        for (let i = 1; i <= parseInt(qty); i++) {
-            const data = "ID-" + Math.floor(Math.random() * 10000);
-            const canvas = document.createElement('canvas');
-            await QRCode.toCanvas(canvas, data);
-            pdf.addImage(canvas.toDataURL(), 'PNG', 20, 20, 40, 40);
-            pdf.text(data, 20, 70);
-            if (i < qty) pdf.addPage();
+    // Update scan count
+    function updateScanCount() {
+        scanCount.textContent = history.length;
+        if (history.length > 0) {
+            scanCount.style.display = 'flex';
+        } else {
+            scanCount.style.display = 'none';
         }
-        pdf.save("qrs.pdf");
-    };
+    }
 
-    // --- SCANNER LOGIC ---
-    scanBtn.onclick = async () => {
+    // Stop camera stream
+    function stopCamera() {
+        scanning = false;
+        
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        
+        video.srcObject = null;
+        videoContainer.style.display = 'none';
+        scanBtn.style.display = 'flex';
+        stopBtn.style.display = 'none';
+        updateStatus('Camera stopped', 'info');
+    }
+
+    // Switch between front/back camera
+    async function switchCamera() {
+        if (stream) {
+            stopCamera();
+            currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+            setTimeout(() => startCamera(), 300);
+        }
+    }
+
+    // Start camera
+    async function startCamera() {
         try {
-            status.innerText = "Starting Camera...";
+            updateStatus('Requesting camera access...', 'warning');
             
-            // 1. Setup MediaPipe
-            const vision = await FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-            );
-            detector = await BarcodeDetector.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite",
-                    delegate: "GPU"
+            // Get camera stream
+            const constraints = {
+                video: { 
+                    facingMode: currentFacingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 },
-                runningMode: "VIDEO"
-            });
-
-            // 2. Setup Camera
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" }
-            });
-
-            video.srcObject = stream;
-            video.onloadedmetadata = () => {
-                video.play();
-                status.innerText = "Scanning Active (Back Cam)";
-                status.style.background = "#d4edda";
-                requestAnimationFrame(loop);
+                audio: false
             };
-        } catch (err) {
-            status.innerText = "Error: " + err.message;
-            status.style.background = "#f8d7da";
-        }
-    };
-
-    async function loop() {
-        if (video.currentTime !== lastTime) {
-            lastTime = video.currentTime;
-            if (detector) {
-                const res = await detector.detectForVideo(video, performance.now());
-                if (res.length > 0) {
-                    const val = res[0].rawValue;
-                    if (history.length === 0 || history[0].data !== val) {
-                        history.unshift({ data: val, time: new Date().toLocaleTimeString() });
-                        localStorage.setItem('scannedQRs', JSON.stringify(history));
-                        renderTable();
-                    }
-                }
+            
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            video.srcObject = stream;
+            videoContainer.style.display = 'block';
+            
+            // Wait for video to be ready
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = () => {
+                    video.play().then(resolve).catch(reject);
+                };
+                video.onerror = reject;
+            });
+            
+            updateStatus(`Scanning with ${currentFacingMode === 'environment' ? 'Back' : 'Front'} Camera...`, 'success');
+            scanBtn.style.display = 'none';
+            stopBtn.style.display = 'flex';
+            scanning = true;
+            
+            // Setup canvas for image processing
+            if (!canvas) {
+                canvas = document.createElement('canvas');
+                canvasContext = canvas.getContext('2d', { willReadFrequently: true });
+            }
+            
+            // Start scanning loop
+            scanFrame();
+            
+        } catch (error) {
+            console.error('Camera error:', error);
+            let errorMsg = 'Camera Error: ';
+            
+            if (error.name === 'NotAllowedError') {
+                errorMsg = 'Please allow camera access in your browser settings';
+            } else if (error.name === 'NotFoundError') {
+                errorMsg = 'No camera found on this device';
+            } else if (error.name === 'NotSupportedError') {
+                errorMsg = 'Your browser does not support camera access';
+            } else if (error.name === 'OverconstrainedError') {
+                errorMsg = 'Cannot satisfy camera constraints. Try switching camera.';
+            } else {
+                errorMsg += error.message;
+            }
+            
+            updateStatus(errorMsg, 'error');
+            
+            // Show fallback message for iOS
+            if (navigator.userAgent.match(/iPhone|iPad|iPod/i)) {
+                updateStatus('On iOS, make sure Safari has camera permission enabled in Settings', 'warning');
             }
         }
-        requestAnimationFrame(loop);
     }
 
+    // Scan video frame for QR codes
+    function scanFrame() {
+        if (!scanning || !stream || video.readyState !== video.HAVE_ENOUGH_DATA) {
+            animationFrameId = requestAnimationFrame(scanFrame);
+            return;
+        }
+        
+        // Set canvas dimensions to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        // Draw video frame to canvas
+        canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Get image data from canvas
+        const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Try to decode QR code
+        try {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: "dontInvert",
+            });
+            
+            if (code) {
+                const qrData = code.data;
+                const now = Date.now();
+                
+                // Prevent duplicate scans within 2 seconds
+                if (qrData !== lastScanData || now - lastScanTime > 2000) {
+                    lastScanData = qrData;
+                    lastScanTime = now;
+                    
+                    // Add to history
+                    addToHistory(qrData);
+                    
+                    // Visual feedback
+                    videoContainer.style.boxShadow = '0 0 0 5px #00ff00';
+                    setTimeout(() => {
+                        videoContainer.style.boxShadow = 'none';
+                    }, 300);
+                    
+                    // Audio feedback (beep sound)
+                    playBeep();
+                    
+                    updateStatus(`Scanned: ${qrData.substring(0, 40)}${qrData.length > 40 ? '...' : ''}`, 'success');
+                }
+            }
+        } catch (error) {
+            console.error('QR decoding error:', error);
+        }
+        
+        // Continue scanning
+        animationFrameId = requestAnimationFrame(scanFrame);
+    }
+
+    // Play beep sound
+    function playBeep() {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.1);
+        } catch (error) {
+            // Audio might not be supported, ignore
+        }
+    }
+
+    // Add scanned QR to history
+    function addToHistory(qrData) {
+        const scanEntry = {
+            id: Date.now() + Math.random().toString(36).substr(2, 9),
+            data: qrData,
+            time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}),
+            date: new Date().toLocaleDateString(),
+            timestamp: Date.now()
+        };
+        
+        history.unshift(scanEntry);
+        
+        // Keep only last 100 scans
+        if (history.length > 100) {
+            history = history.slice(0, 100);
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('scannedQRs', JSON.stringify(history));
+        
+        // Update UI
+        renderTable();
+        updateScanCount();
+    }
+
+    // Render history table
     function renderTable() {
-        document.querySelector('#scanTable tbody').innerHTML = history.map(h => 
-            `<tr><td>${h.time}</td><td>${h.data}</td></tr>`
-        ).join('');
+        if (history.length === 0) {
+            scanTableBody.innerHTML = '';
+            emptyState.style.display = 'block';
+            return;
+        }
+        
+        emptyState.style.display = 'none';
+        
+        scanTableBody.innerHTML = history.map(entry => `
+            <tr>
+                <td>
+                    <div style="font-weight: 600; color: #333;">${entry.time}</div>
+                    <div style="font-size: 12px; color: #6c757d;">${entry.date}</div>
+                </td>
+                <td style="max-width: 300px; word-wrap: break-word;">
+                    <div style="font-family: 'Courier New', monospace; background: #f8f9fa; padding: 8px; border-radius: 6px; border-left: 3px solid #667eea;">
+                        ${entry.data}
+                    </div>
+                </td>
+                <td>
+                    <button class="control-btn" onclick="copyToClipboard('${entry.data.replace(/'/g, "\\'")}')" title="Copy">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    <button class="control-btn" style="background: #dc3545;" onclick="deleteScan('${entry.id}')" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
     }
 
+    // Copy text to clipboard
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            updateStatus('Copied to clipboard!', 'success');
+        }).catch(err => {
+            updateStatus('Failed to copy', 'error');
+        });
+    }
+
+    // Delete a scan from history
+    function deleteScan(id) {
+        history = history.filter(entry => entry.id !== id);
+        localStorage.setItem('scannedQRs', JSON.stringify(history));
+        renderTable();
+        updateScanCount();
+        updateStatus('Scan deleted', 'warning');
+    }
+
+    // Clear all history
+    function clearHistory() {
+        if (confirm('Are you sure you want to clear all scan history?')) {
+            history = [];
+            localStorage.removeItem('scannedQRs');
+            renderTable();
+            updateScanCount();
+            updateStatus('History cleared', 'warning');
+        }
+    }
+
+    // Generate PDF with QR codes
+    genBtn.onclick = async () => {
+        const qty = prompt("How many QR codes to generate?", "3");
+        if (!qty || isNaN(qty) || parseInt(qty) < 1) {
+            updateStatus('Please enter a valid number', 'error');
+            return;
+        }
+        
+        const numQRs = Math.min(parseInt(qty), 100); // Limit to 100
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF();
+        
+        updateStatus(`Generating ${numQRs} QR codes...`, 'warning');
+        
+        try {
+            for (let i = 1; i <= numQRs; i++) {
+                // Generate random data for QR code
+                const data = `QR-${Math.random().toString(36).substr(2, 9).toUpperCase()}-${Date.now()}`;
+                const canvas = document.createElement('canvas');
+                
+                // Generate QR code
+                await QRCode.toCanvas(canvas, data, {
+                    width: 200,
+                    margin: 2,
+                    color: {
+                        dark: '#000000',
+                        light: '#FFFFFF'
+                    },
+                    errorCorrectionLevel: 'H'
+                });
+                
+                // Calculate position for centering
+                const pageWidth = pdf.internal.pageSize.getWidth();
+                const pageHeight = pdf.internal.pageSize.getHeight();
+                const qrSize = 80;
+                const xPos = (pageWidth - qrSize) / 2;
+                const yPos = (pageHeight - qrSize - 20) / 2;
+                
+                // Add QR code image
+                pdf.addImage(canvas.toDataURL(), 'PNG', xPos, yPos, qrSize, qrSize);
+                
+                // Add label below QR code
+                pdf.setFontSize(12);
+                pdf.setTextColor(40, 40, 40);
+                pdf.text(`QR Code #${i}`, pageWidth / 2, yPos + qrSize + 10, { align: 'center' });
+                
+                // Add data text (truncated if too long)
+                const displayData = data.length > 30 ? data.substring(0, 30) + '...' : data;
+                pdf.setFontSize(10);
+                pdf.setTextColor(100, 100, 100);
+                pdf.text(displayData, pageWidth / 2, yPos + qrSize + 20, { align: 'center' });
+                
+                // Add page number
+                pdf.setFontSize(9);
+                pdf.setTextColor(150, 150, 150);
+                pdf.text(`Page ${i} of ${numQRs}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+                
+                // Add new page if not last
+                if (i < numQRs) {
+                    pdf.addPage();
+                }
+            }
+            
+            // Save PDF
+            const fileName = `qrcodes-${new Date().toISOString().slice(0,10)}.pdf`;
+            pdf.save(fileName);
+            updateStatus(`Generated ${numQRs} QR codes in PDF`, 'success');
+            
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            updateStatus('Failed to generate PDF', 'error');
+        }
+    };
+
+    // Event Listeners
+    scanBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    switchCamBtn.addEventListener('click', switchCamera);
+    clearHistoryBtn.addEventListener('click', clearHistory);
+    fabScan.addEventListener('click', startCamera);
+    
+    // Flash button (placeholder for future implementation)
+    flashBtn.addEventListener('click', () => {
+        updateStatus('Flash feature requires additional permissions', 'info');
+    });
+
+    // Initialize
     renderTable();
+    updateStatus('Ready to scan QR codes. Click "Start Camera" to begin.', 'info');
+
+    // Make functions available globally for inline event handlers
+    window.copyToClipboard = copyToClipboard;
+    window.deleteScan = deleteScan;
 </script>
 
 </body>
