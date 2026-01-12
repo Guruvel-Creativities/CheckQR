@@ -3,53 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>QR Scanner & PDF Generator</title>
+    <title>QR Scanner Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"></script>
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f4f7f6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h2 { margin-top: 0; color: #007bff; }
-        .button-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.3s; }
-        .btn-pdf { background: #6c757d; color: white; }
-        .btn-scan { background: #28a745; color: white; }
-        button:hover { opacity: 0.9; }
-        #video-container { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .status { padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9em; text-align: center; background: #eee; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; font-size: 0.8em; text-transform: uppercase; color: #666; }
-        code { background: #f1f1f1; padding: 2px 5px; border-radius: 4px; font-family: monospace; }
+        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f0f2f5; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; background: #007bff; color: white; }
+        #video-container { width: 100%; background: #000; border-radius: 8px; overflow: hidden; position: relative; }
+        video { width: 100%; display: block; }
+        .status { padding: 10px; margin-bottom: 10px; border-radius: 5px; background: #eee; font-size: 14px; text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>QR Toolkit</h2>
-    
-    <div class="button-group">
-        <button class="btn-pdf" onclick="generatePDF()">Generate PDF</button>
-        <button class="btn-scan" onclick="startScanner()">Start Back Camera</button>
+    <div class="btn-group">
+        <button onclick="generatePDF()">Generate PDF</button>
+        <button onclick="startScanner()" style="background:#28a745">Start Back Cam</button>
     </div>
 
-    <div id="status" class="status">Click "Start Back Camera" to begin</div>
-
+    <div id="status" class="status">Waiting to start...</div>
+    
     <div id="video-container">
         <video id="video" playsinline></video>
     </div>
 
-    <h3>Scanned Data</h3>
     <table id="scanTable">
-        <thead>
-            <tr>
-                <th>Time</th>
-                <th>Content</th>
-            </tr>
-        </thead>
+        <thead><tr><th>Time</th><th>Data</th></tr></thead>
         <tbody></tbody>
     </table>
 </div>
@@ -61,123 +47,88 @@ let lastVideoTime = -1;
 const videoElement = document.getElementById('video');
 const statusDiv = document.getElementById('status');
 
-// --- Initialization ---
-async function initBarcodeDetector() {
-    const vision = await createFilesetResolver();
-    const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-    );
-    
-    barcodeDetector = await vision.BarcodeDetector.createFromOptions(filesetResolver, {
-        baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite`,
-            delegate: "GPU"
-        },
-        runningMode: "VIDEO"
-    });
+function updateTable() {
+    const tbody = document.querySelector('#scanTable tbody');
+    tbody.innerHTML = scannedData.slice().reverse().map(entry => 
+        `<tr><td>${entry.time}</td><td>${entry.data}</td></tr>`
+    ).join('');
+    localStorage.setItem('scannedQRs', JSON.stringify(scannedData));
 }
 
 async function startScanner() {
     try {
-        statusDiv.innerText = "Loading AI models...";
-        
-        // Ensure MediaPipe is ready
-        if (!barcodeDetector) {
-            const vision = window["tasks-vision"];
-            const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-            );
-            barcodeDetector = await vision.BarcodeDetector.createFromOptions(filesetResolver, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite`,
-                    delegate: "GPU"
-                },
-                runningMode: "VIDEO"
-            });
+        statusDiv.innerText = "Initializing AI...";
+
+        // FIX: Specifically checking for the MediaPipe library object
+        const vision = window.tasksVision || window["tasks-vision"];
+        if (!vision) {
+            throw new Error("MediaPipe Library not loaded yet. Please wait 2 seconds and try again.");
         }
 
-        statusDiv.innerText = "Accessing back camera...";
+        const filesetResolver = await vision.FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+        );
         
-        const constraints = {
-            video: { 
-                facingMode: "environment", // Requests back camera
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            }
-        };
+        barcodeDetector = await vision.BarcodeDetector.createFromOptions(filesetResolver, {
+            baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite",
+                delegate: "GPU"
+            },
+            runningMode: "VIDEO"
+        });
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        statusDiv.innerText = "Opening Back Camera...";
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                facingMode: "environment",
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        });
+
         videoElement.srcObject = stream;
-        
         videoElement.onloadedmetadata = () => {
             videoElement.play();
-            statusDiv.innerText = "Scanner Active - Point at QR code";
-            statusDiv.style.background = "#d4edda";
-            statusDiv.style.color = "#155724";
+            statusDiv.innerText = "Scanning...";
             predictWebcam();
         };
+
     } catch (err) {
         statusDiv.innerText = "Error: " + err.message;
-        statusDiv.style.background = "#f8d7da";
-        statusDiv.style.color = "#721c24";
-        console.error(err);
+        console.error("Scanner Error:", err);
     }
 }
 
 async function predictWebcam() {
     if (videoElement.currentTime !== lastVideoTime) {
         lastVideoTime = videoElement.currentTime;
-        const result = await barcodeDetector.detectForVideo(videoElement, performance.now());
-        
-        if (result.length > 0) {
-            const code = result[0].rawValue;
-            // Prevent multiple logs of the same QR in a row
-            if (scannedData.length === 0 || scannedData[scannedData.length - 1].data !== code) {
-                const entry = { data: code, time: new Date().toLocaleTimeString() };
-                scannedData.push(entry);
-                updateTable();
-                
-                // Audio/Visual feedback
-                statusDiv.innerText = "Scanned: " + code;
-                setTimeout(() => statusDiv.innerText = "Scanner Active", 2000);
+        if (barcodeDetector) {
+            const detections = await barcodeDetector.detectForVideo(videoElement, performance.now());
+            if (detections.length > 0) {
+                const code = detections[0].rawValue;
+                if (scannedData.length === 0 || scannedData[scannedData.length - 1].data !== code) {
+                    scannedData.push({ data: code, time: new Date().toLocaleTimeString() });
+                    updateTable();
+                }
             }
         }
     }
     requestAnimationFrame(predictWebcam);
 }
 
-function updateTable() {
-    const tbody = document.querySelector('#scanTable tbody');
-    tbody.innerHTML = scannedData.slice().reverse().map(entry => 
-        `<tr><td>${entry.time}</td><td><code>${entry.data}</code></td></tr>`
-    ).join('');
-    localStorage.setItem('scannedQRs', JSON.stringify(scannedData));
-}
-
 async function generatePDF() {
-    const qty = prompt("Enter number of QR codes:", "5");
-    if (!qty || isNaN(qty)) return;
-
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: 'mm', format: [100, 100] });
-    
-    for (let i = 1; i <= parseInt(qty); i++) {
-        const qrContent = `ID-${Math.floor(1000 + Math.random() * 9000)}`;
-        const canvas = document.createElement('canvas');
-        await QRCode.toCanvas(canvas, qrContent, { width: 200 });
-        
-        pdf.addImage(canvas.toDataURL(), 'PNG', 25, 10, 50, 50);
-        pdf.setFontSize(14);
-        pdf.text(qrContent, 50, 70, { align: 'center' });
-        
-        if (i < qty) pdf.addPage();
-    }
-    pdf.save('labels.pdf');
+    const pdf = new jsPDF();
+    const canvas = document.createElement('canvas');
+    const data = "TEST-123";
+    await QRCode.toCanvas(canvas, data);
+    pdf.addImage(canvas.toDataURL(), 'PNG', 10, 10, 50, 50);
+    pdf.text("Sample QR: " + data, 10, 70);
+    pdf.save("test.pdf");
 }
 
-// Initial Table Load
 updateTable();
 </script>
-
 </body>
 </html>
