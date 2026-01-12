@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR PDF Generator & Scanner</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision"></script>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; }
+  table, th, td { border: 1px solid black; border-collapse: collapse; margin-top: 10px; }
+  th, td { padding: 5px; text-align: center; }
+</style>
+</head>
+<body>
+
+<h2>QR PDF Generator & Scanner</h2>
+
+<button onclick="generatePDF()">Generate QR PDF</button>
+<button onclick="startScanner()">Start Scan</button>
+
+<h3>Camera</h3>
+<video id="video" width="300" height="200" autoplay muted></video>
+
+<h3>Scanned QR Data</h3>
+<table id="scanTable">
+  <thead>
+    <tr><th>QR Data</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let scannedData = JSON.parse(localStorage.getItem('scannedQRs') || '[]');
+
+function updateTable() {
+  const tbody = document.querySelector('#scanTable tbody');
+  tbody.innerHTML = '';
+  scannedData.forEach(data => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${data}</td>`;
+    tbody.appendChild(row);
+  });
+  localStorage.setItem('scannedQRs', JSON.stringify(scannedData));
+}
+
+updateTable();
+
+// --- PDF Generation ---
+async function generatePDF() {
+  let qty = parseInt(prompt("Enter quantity of QR codes:"));
+  if (isNaN(qty) || qty <= 0) return alert("Invalid quantity");
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: [150, 100] }); // 100x150 mm
+
+  const qrSize = 20; // mm
+  const margin = 5;  // mm
+  const pageWidth = 100;
+  const pageHeight = 150;
+
+  let x = margin;
+  let y = margin;
+
+  for (let i = 1; i <= qty; i++) {
+    let qrData = `id-a-${String(i).padStart(3,'0')}`;
+    const canvas = document.createElement('canvas');
+    await QRCode.toCanvas(canvas, qrData, { width: 150, margin: 0 });
+    const imgData = canvas.toDataURL("image/png");
+
+    pdf.addImage(imgData, 'PNG', x, y, qrSize, qrSize);
+
+    x += qrSize + margin;
+    if (x + qrSize + margin > pageWidth) {
+      x = margin;
+      y += qrSize + margin;
+    }
+
+    if (y + qrSize + margin > pageHeight) {
+      pdf.addPage();
+      x = margin;
+      y = margin;
+    }
+  }
+
+  pdf.save('qr_codes.pdf');
+}
+
+// --- QR Scanner ---
+const videoElement = document.getElementById('video');
+let scannerStarted = false;
+
+async function startScanner() {
+  if (scannerStarted) return alert("Scanner already running");
+  scannerStarted = true;
+
+  const vision = await window.Vision.createFromOptions({
+    modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/qr_code_v1.tflite",
+    delegate: "CPU"
+  });
+
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  videoElement.srcObject = stream;
+
+  videoElement.addEventListener('loadeddata', async () => {
+    const detectFrame = async () => {
+      const results = await vision.detectForVideo(videoElement, Date.now());
+      if (results.length > 0) {
+        const qrText = results[0].text;
+        if (scannedData.includes(qrText)) {
+          scannedData = scannedData.filter(x => x !== qrText); // delete
+        } else {
+          scannedData.push(qrText); // add
+        }
+        updateTable();
+      }
+      requestAnimationFrame(detectFrame);
+    };
+    detectFrame();
+  });
+}
+</script>
+
+</body>
+</html>
