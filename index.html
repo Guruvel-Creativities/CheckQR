@@ -6,129 +6,144 @@
     <title>QR Scanner Pro</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3"></script>
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f0f2f5; }
-        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        body { font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f8f9fa; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        button { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; background: #007bff; color: white; }
-        #video-container { width: 100%; background: #000; border-radius: 8px; overflow: hidden; position: relative; }
-        video { width: 100%; display: block; }
-        .status { padding: 10px; margin-bottom: 10px; border-radius: 5px; background: #eee; font-size: 14px; text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+        button { flex: 1; padding: 14px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .btn-gen { background: #6c757d; color: white; }
+        .btn-scan { background: #007bff; color: white; }
+        #video-container { width: 100%; aspect-ratio: 1; background: #000; border-radius: 12px; overflow: hidden; position: relative; margin-bottom: 20px; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .status { padding: 12px; margin-bottom: 15px; border-radius: 8px; background: #e9ecef; font-size: 14px; text-align: center; font-weight: 500; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; border-bottom: 1px solid #eee; text-align: left; }
+        th { color: #666; font-size: 12px; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="btn-group">
-        <button onclick="generatePDF()">Generate PDF</button>
-        <button onclick="startScanner()" style="background:#28a745">Start Back Cam</button>
+        <button class="btn-gen" onclick="generatePDF()">Generate PDF</button>
+        <button class="btn-scan" id="startBtn">Start Back Cam</button>
     </div>
 
-    <div id="status" class="status">Waiting to start...</div>
+    <div id="status" class="status">Waiting for user...</div>
     
     <div id="video-container">
         <video id="video" playsinline></video>
     </div>
 
     <table id="scanTable">
-        <thead><tr><th>Time</th><th>Data</th></tr></thead>
+        <thead><tr><th>Time</th><th>Result</th></tr></thead>
         <tbody></tbody>
     </table>
 </div>
 
-<script>
-let scannedData = JSON.parse(localStorage.getItem('scannedQRs') || '[]');
-let barcodeDetector;
-let lastVideoTime = -1;
-const videoElement = document.getElementById('video');
-const statusDiv = document.getElementById('status');
+<script type="module">
+    import { BarcodeDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
 
-function updateTable() {
-    const tbody = document.querySelector('#scanTable tbody');
-    tbody.innerHTML = scannedData.slice().reverse().map(entry => 
-        `<tr><td>${entry.time}</td><td>${entry.data}</td></tr>`
-    ).join('');
-    localStorage.setItem('scannedQRs', JSON.stringify(scannedData));
-}
+    let barcodeDetector;
+    let lastVideoTime = -1;
+    const videoElement = document.getElementById('video');
+    const statusDiv = document.getElementById('status');
+    const startBtn = document.getElementById('startBtn');
 
-async function startScanner() {
-    try {
-        statusDiv.innerText = "Initializing AI...";
+    // Make generatePDF global so the button can see it
+    window.generatePDF = async function() {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF();
+        const canvas = document.createElement('canvas');
+        await QRCode.toCanvas(canvas, "ID-" + Math.floor(Math.random()*1000));
+        pdf.addImage(canvas.toDataURL(), 'PNG', 10, 10, 40, 40);
+        pdf.text("Scannable Label", 10, 60);
+        pdf.save("qr_code.pdf");
+    };
 
-        // FIX: Specifically checking for the MediaPipe library object
-        const vision = window.tasksVision || window["tasks-vision"];
-        if (!vision) {
-            throw new Error("MediaPipe Library not loaded yet. Please wait 2 seconds and try again.");
+    async function initScanner() {
+        try {
+            statusDiv.innerText = "Loading AI Engine...";
+            
+            const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+            );
+            
+            barcodeDetector = await BarcodeDetector.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite",
+                    delegate: "GPU"
+                },
+                runningMode: "VIDEO"
+            });
+
+            statusDiv.innerText = "Requesting Back Camera...";
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { 
+                    facingMode: "environment",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }
+            });
+
+            videoElement.srcObject = stream;
+            videoElement.onloadedmetadata = () => {
+                videoElement.play();
+                statusDiv.innerText = "Scanning Active";
+                statusDiv.style.background = "#d4edda";
+                predictWebcam();
+            };
+
+        } catch (err) {
+            statusDiv.innerText = "Error: " + err.message;
+            statusDiv.style.background = "#f8d7da";
         }
-
-        const filesetResolver = await vision.FilesetResolver.forVisionTasks(
-            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
-        );
-        
-        barcodeDetector = await vision.BarcodeDetector.createFromOptions(filesetResolver, {
-            baseOptions: {
-                modelAssetPath: "https://storage.googleapis.com/mediapipe-assets/barcode_detector.tflite",
-                delegate: "GPU"
-            },
-            runningMode: "VIDEO"
-        });
-
-        statusDiv.innerText = "Opening Back Camera...";
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                facingMode: "environment",
-                width: { ideal: 640 },
-                height: { ideal: 480 }
-            }
-        });
-
-        videoElement.srcObject = stream;
-        videoElement.onloadedmetadata = () => {
-            videoElement.play();
-            statusDiv.innerText = "Scanning...";
-            predictWebcam();
-        };
-
-    } catch (err) {
-        statusDiv.innerText = "Error: " + err.message;
-        console.error("Scanner Error:", err);
     }
-}
 
-async function predictWebcam() {
-    if (videoElement.currentTime !== lastVideoTime) {
-        lastVideoTime = videoElement.currentTime;
-        if (barcodeDetector) {
-            const detections = await barcodeDetector.detectForVideo(videoElement, performance.now());
-            if (detections.length > 0) {
-                const code = detections[0].rawValue;
-                if (scannedData.length === 0 || scannedData[scannedData.length - 1].data !== code) {
-                    scannedData.push({ data: code, time: new Date().toLocaleTimeString() });
-                    updateTable();
+    async function predictWebcam() {
+        if (videoElement.currentTime !== lastVideoTime) {
+            lastVideoTime = videoElement.currentTime;
+            if (barcodeDetector) {
+                const result = await barcodeDetector.detectForVideo(videoElement, performance.now());
+                if (result.length > 0) {
+                    handleScan(result[0].rawValue);
                 }
             }
         }
+        requestAnimationFrame(predictWebcam);
     }
-    requestAnimationFrame(predictWebcam);
-}
 
-async function generatePDF() {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-    const canvas = document.createElement('canvas');
-    const data = "TEST-123";
-    await QRCode.toCanvas(canvas, data);
-    pdf.addImage(canvas.toDataURL(), 'PNG', 10, 10, 50, 50);
-    pdf.text("Sample QR: " + data, 10, 70);
-    pdf.save("test.pdf");
-}
+    function handleScan(data) {
+        const history = JSON.parse(localStorage.getItem('scannedQRs') || '[]');
+        // Don't scan the same thing twice in a row
+        if (history.length > 0 && history[history.length - 1].data === data) return;
 
-updateTable();
+        const entry = { data, time: new Date().toLocaleTimeString() };
+        history.push(entry);
+        localStorage.setItem('scannedQRs', JSON.stringify(history));
+        
+        renderTable(history);
+        
+        // Visual feedback
+        statusDiv.innerText = "Found: " + data;
+        setTimeout(() => statusDiv.innerText = "Scanning Active", 1500);
+    }
+
+    function renderTable(data) {
+        const tbody = document.querySelector('#scanTable tbody');
+        tbody.innerHTML = data.slice().reverse().map(item => 
+            `<tr><td>${item.time}</td><td><code>${item.data}</code></td></tr>`
+        ).join('');
+    }
+
+    // Event Listeners
+    startBtn.addEventListener('click', initScanner);
+    
+    // Initial Table Render
+    renderTable(JSON.parse(localStorage.getItem('scannedQRs') || '[]'));
 </script>
+
 </body>
 </html>
